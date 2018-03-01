@@ -5,6 +5,7 @@ var assert      = require('assert');
 var readline    = require('readline');
 var swaggerTest = require('./lib/swagger-test.js');
 var jsonDiff    = require('json-diff');
+const util = require('util')
 
 var source = [];
 
@@ -22,22 +23,24 @@ rl.on('close', function () {
   var failed = [];
   var requests = [];
   var swaggerSpec = JSON.parse(source.join('\n'));
-  var xamples = swaggerTest.parse(swaggerSpec);
+  var xamples = swaggerTest.parse(swaggerSpec, { inferXamples: true });
   xamples.forEach(function (xample) {
     requests.push(
       preq[xample.request.method](xample.request).then(function (response) {
-        if (response.status && xample.responses[response.status]) {
-          var xampleResponse = xample.responses[response.status];
-          xampleResponse.status = response.status;
-          if (response.headers && xampleResponse.headers) {
-            for (var h in response.headers) {
-              if (response.headers.hasOwnProperty(h)) {
-                if (!(h in xampleResponse.headers)) {
-                  delete response.headers[h];
-                }
-              }
-            }
+        if (response.status) {
+          try {
+            var xampleResponse = xample.responses[response.status];
+            xampleResponse.status = response.status;
+
+            delete response.headers;
+
+            xampleResponse = swaggerTest.refactor(swaggerSpec, xampleResponse);
+            console.log(util.inspect(xampleResponse, false, null))
+
+          } catch (e){
+            console.log(e);
           }
+          
           try {
             assert.deepEqual(response, xampleResponse);
             passed.push({
@@ -55,6 +58,8 @@ rl.on('close', function () {
     );
   });
   Promise.all(requests).then(function () {
+
+    console.log(requests.length.toString(), 'tests run:');
 
     console.log(passed.length.toString(), 'tests passed:');
     passed.forEach(function (x) {
